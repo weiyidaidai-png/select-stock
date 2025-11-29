@@ -54,9 +54,6 @@ def background_analysis(stock_list, long_period, diff_threshold, short_period):
                 result['name'] = name
                 results.append(result)
 
-            # 小延迟，避免API限制
-            time.sleep(0.1)
-
         # 处理分析结果
         import pandas as pd
         df = pd.DataFrame(results)
@@ -237,3 +234,4 @@ if __name__ == '__main__':
     print("首次使用请在 config.py 中配置您的 tushare API token")
 
     app.run(debug=True)
+
