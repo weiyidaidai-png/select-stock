@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A股股票均线差异筛选工具</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .config-section {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .config-form {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .form-group label {
+            font-weight: 600;
+            color: #555;
+        }
+
+        .form-group input {
+            padding: 10px 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5a6fd8;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            display: none;
+        }
+
+        .progress-container {
+            margin-top: 15px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #e1e5e9;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+        }
+
+        .results-section {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            display: none;
+        }
+
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .results-count {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #e1e5e9;
+        }
+
+        th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        tr:hover {
+            background-color: #f8f9fa;
+        }
+
+        .stock-link {
+            color: #667eea;
+            text-decoration: none;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .stock-link:hover {
+            text-decoration: underline;
+        }
+
+        .diff-positive {
+            color: #dc3545;
+            font-weight: 600;
+        }
+
+        .diff-negative {
+            color: #28a745;
+            font-weight: 600;
+        }
+
+        .chart-section {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            display: none;
+        }
+
+        .chart-container {
+            height: 500px;
+            margin-top: 20px;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+            border: 1px solid #f5c6cb;
+        }
+
+        .info-message {
+            background: #d1ecf1;
+            color: #0c5460;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+            border: 1px solid #bee5eb;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+
+            .header h1 {
+                font-size: 1.8rem;
+            }
+
+            .config-form {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .btn {
+                width: 100%;
+            }
+
+            .results-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📈 A股股票均线差异筛选工具</h1>
+            <p>基于tushare数据，筛选短期均线与长期均线差异明显的股票</p>
+        </div>
+
+        <div class="config-section">
+            <h2>参数配置</h2>
+            <form class="config-form" id="configForm">
+                <div class="form-group">
+                    <label for="shortPeriod">短期均值周期</label>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="number" id="shortPeriod" value="{{ default_short_period }}" min="1" max="30" required>
+                        <select id="shortPeriodUnit" style="padding: 10px 15px; border: 2px solid #e1e5e9; border-radius: 6px; font-size: 16px;">
+                            <option value="day" {% if default_short_period_unit == 'day' %}selected{% endif %}>日</option>
+                            <option value="month" {% if default_short_period_unit == 'month' %}selected{% endif %}>月</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="longPeriod">长期均值周期（天）</label>
+                    <input type="number" id="longPeriod" value="{{ default_long_period }}" min="5" max="365" required>
+                </div>
+                <div class="form-group">
+                    <label for="diffThreshold">差异百分比阈值（%）</label>
+                    <input type="number" id="diffThreshold" value="{{ default_diff_threshold }}" min="0" max="100" step="0.1" required>
+                </div>
+                <button type="submit" class="btn btn-primary" id="startBtn">
+                    <span id="btnText">开始筛选</span>
+                    <span class="loading" id="btnLoading" style="display: none;"></span>
+                </button>
+                <button type="button" class="btn btn-primary" id="resetBtn" style="background: #6c757d;">
+                    重置筛选
+                </button>
+            </form>
+        </div>
+
+        <div class="status-section" id="statusSection">
+            <h3>筛选状态</h3>
+            <div id="statusText">正在准备筛选...</div>
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill">0%</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="results-section" id="resultsSection">
+            <div class="results-header">
+                <h3>筛选结果</h3>
+                <div class="results-count" id="resultsCount">找到 0 只符合条件的股票</div>
+            </div>
+            <div class="table-container">
+                <table id="resultsTable">
+                    <thead>
+                        <tr>
+                            <th>股票代码</th>
+                            <th>股票名称</th>
+                            <th>差异百分比</th>
+                            <th>最新收盘价</th>
+                            <th>长期均值</th>
+                            <th>短期均值</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="chart-section" id="chartSection">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 id="chartTitle">股票价格走势图</h3>
+                <button type="button" class="btn btn-primary" id="closeChartBtn" style="background: #6c757d;">
+                    关闭图表
+                </button>
+            </div>
+            <div class="chart-container" id="priceChart"></div>
+        </div>
+    </div>
+
+    <script>
+        let analysisInterval = null;
+        let priceChart = null;
+
+        // 表单提交处理
+        document.getElementById('configForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            startAnalysis();
+        });
+
+        // 重置按钮处理
+        document.getElementById('resetBtn').addEventListener('click', function() {
+            resetAnalysis();
+        });
+
+        // 关闭图表按钮处理
+        document.getElementById('closeChartBtn').addEventListener('click', function() {
+            document.getElementById('chartSection').style.display = 'none';
+        });
+
+        // 开始分析
+        function startAnalysis() {
+            const shortPeriod = document.getElementById('shortPeriod').value;
+            const shortPeriodUnit = document.getElementById('shortPeriodUnit').value;
+            const longPeriod = document.getElementById('longPeriod').value;
+            const diffThreshold = document.getElementById('diffThreshold').value;
+
+            // 禁用按钮
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('btnText').style.display = 'none';
+            document.getElementById('btnLoading').style.display = 'inline-block';
+
+            // 显示状态区域
+            document.getElementById('statusSection').style.display = 'block';
+            document.getElementById('statusText').textContent = '正在初始化筛选...';
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('progressFill').textContent = '0%';
+
+            // 隐藏结果和图表区域
+            document.getElementById('resultsSection').style.display = 'none';
+            document.getElementById('chartSection').style.display = 'none';
+
+            // 发送配置请求
+            fetch('/api/configure', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `short_period=${shortPeriod}&short_period_unit=${shortPeriodUnit}&long_period=${longPeriod}&diff_threshold=${diffThreshold}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('statusText').textContent = `开始分析 ${data.total_stocks} 只股票...`;
+                    // 开始轮询状态
+                    startStatusPolling();
+                } else {
+                    showError(data.message);
+                    resetUI();
+                }
+            })
+            .catch(error => {
+                showError('配置请求失败: ' + error.message);
+                resetUI();
+            });
+        }
+
+        // 开始状态轮询
+        function startStatusPolling() {
+            if (analysisInterval) {
+                clearInterval(analysisInterval);
+            }
+
+            analysisInterval = setInterval(function() {
+                fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('progressFill').style.width = data.progress + '%';
+                    document.getElementById('progressFill').textContent = data.progress + '%';
+
+                    if (data.status === 'completed') {
+                        clearInterval(analysisInterval);
+                        document.getElementById('statusText').textContent = '分析完成，正在加载结果...';
+                        loadResults();
+                    } else if (data.status === 'error') {
+                        clearInterval(analysisInterval);
+                        showError('分析过程中发生错误');
+                        resetUI();
+                    }
+                })
+                .catch(error => {
+                    console.error('获取状态失败:', error);
+                });
+            }, 1000);
+        }
+
+        // 加载结果
+        function loadResults() {
+            fetch('/api/results')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    displayResults(data.data);
+                    document.getElementById('statusSection').style.display = 'none';
+                    document.getElementById('resultsSection').style.display = 'block';
+                } else {
+                    showError(data.message);
+                    document.getElementById('statusSection').style.display = 'none';
+                }
+                resetUI();
+            })
+            .catch(error => {
+                showError('加载结果失败: ' + error.message);
+                resetUI();
+            });
+        }
+
+        // 显示结果
+        function displayResults(results) {
+            // 显示统计信息
+            const stats = results.statistics;
+            document.getElementById('resultsCount').textContent = `找到 ${stats.total} 只符合条件的股票（上涨 ${stats.up}，下跌 ${stats.down}）`;
+
+            // 清除之前的统计摘要
+            const existingStats = document.querySelector('.results-header .info-message');
+            if (existingStats) {
+                existingStats.remove();
+            }
+
+            // 显示统计摘要
+            const resultsHeader = document.querySelector('.results-header');
+            const statsDiv = document.createElement('div');
+            statsDiv.className = 'info-message';
+            statsDiv.style.marginTop = '0';
+            statsDiv.innerHTML = `
+                <strong>统计摘要：</strong>
+                总股票数: ${stats.total} |
+                上涨股票: ${stats.up} |
+                下跌股票: ${stats.down} |
+                平均差异: ${stats.avg_diff > 0 ? '+' : ''}${stats.avg_diff.toFixed(2)}%
+            `;
+            resultsHeader.appendChild(statsDiv);
+
+            const tbody = document.getElementById('resultsTableBody');
+            tbody.innerHTML = '';
+
+            results.stocks.forEach(stock => {
+                const row = document.createElement('tr');
+                const diffClass = stock.diff_percent > 0 ? 'diff-positive' : 'diff-negative';
+                const diffText = `${stock.diff_percent > 0 ? '+' : ''}${stock.diff_percent.toFixed(2)}%`;
+
+                row.innerHTML = `
+                    <td><a href="#" class="stock-link" data-ts-code="${stock.ts_code}">${stock.ts_code}</a></td>
+                    <td>${stock.name}</td>
+                    <td class="${diffClass}">${diffText}</td>
+                    <td>¥${stock.latest_close.toFixed(2)}</td>
+                    <td>¥${stock.long_mean.toFixed(2)}</td>
+                    <td>¥${stock.short_mean.toFixed(2)}</td>
+                `;
+
+                tbody.appendChild(row);
+            });
+
+            // 添加股票点击事件
+            document.querySelectorAll('.stock-link').forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const tsCode = this.getAttribute('data-ts-code');
+                    showStockChart(tsCode);
+                });
+            });
+        }
+
+        // 显示股票图表
+        function showStockChart(tsCode) {
+            fetch(`/api/stock_details/${tsCode}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('chartSection').style.display = 'block';
+                    document.getElementById('chartTitle').textContent = `股票 ${tsCode} 价格走势图`;
+                    renderPriceChart(data.data);
+                } else {
+                    showError('无法获取股票详情: ' + data.message);
+                }
+            })
+            .catch(error => {
+                showError('获取股票详情失败: ' + error.message);
+            });
+        }
+
+        // 渲染价格图表
+        function renderPriceChart(data) {
+            const chartDom = document.getElementById('priceChart');
+            if (priceChart) {
+                priceChart.dispose();
+            }
+            priceChart = echarts.init(chartDom);
+
+            const option = {
+                title: {
+                    text: '股票价格走势',
+                    left: 'center'
+                },
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'cross'
+                    }
+                },
+                legend: {
+                    data: ['收盘价', '5日均线', '20日均线', '30日均线'],
+                    bottom: 10
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '15%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    data: data.trade_dates,
+                    axisLabel: {
+                        rotate: 45,
+                        interval: Math.floor(data.trade_dates.length / 10)
+                    }
+                },
+                yAxis: {
+                    type: 'value',
+                    scale: true,
+                    axisLabel: {
+                        formatter: '¥{value}'
+                    }
+                },
+                series: [
+                    {
+                        name: '收盘价',
+                        type: 'line',
+                        data: data.close_prices,
+                        smooth: true,
+                        lineStyle: {
+                            width: 2
+                        }
+                    },
+                    {
+                        name: '5日均线',
+                        type: 'line',
+                        data: data.ma5,
+                        smooth: true,
+                        lineStyle: {
+                            width: 1,
+                            type: 'dashed'
+                        },
+                        symbol: 'none'
+                    },
+                    {
+                        name: '20日均线',
+                        type: 'line',
+                        data: data.ma20,
+                        smooth: true,
+                        lineStyle: {
+                            width: 1,
+                            type: 'dashed'
+                        },
+                        symbol: 'none'
+                    },
+                    {
+                        name: '30日均线',
+                        type: 'line',
+                        data: data.ma30,
+                        smooth: true,
+                        lineStyle: {
+                            width: 1,
+                            type: 'dashed'
+                        },
+                        symbol: 'none'
+                    }
+                ]
+            };
+
+            priceChart.setOption(option);
+
+            // 响应式调整
+            window.addEventListener('resize', function() {
+                priceChart.resize();
+            });
+        }
+
+        // 重置分析
+        function resetAnalysis() {
+            if (analysisInterval) {
+                clearInterval(analysisInterval);
+            }
+
+            fetch('/api/reset')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    resetUI();
+                    // 重置表单字段到默认值
+                    document.getElementById('shortPeriod').value = {{ default_short_period }};
+                    document.getElementById('shortPeriodUnit').value = '{{ default_short_period_unit }}';
+                    document.getElementById('longPeriod').value = {{ default_long_period }};
+                    document.getElementById('diffThreshold').value = {{ default_diff_threshold }};
+
+                    // 隐藏各个区域
+                    document.getElementById('statusSection').style.display = 'none';
+                    document.getElementById('resultsSection').style.display = 'none';
+                    document.getElementById('chartSection').style.display = 'none';
+
+                    showInfo('分析状态已重置');
+                } else {
+                    showError('重置失败: ' + data.message);
+                }
+            })
+            .catch(error => {
+                showError('重置失败: ' + error.message);
+            });
+        }
+
+        // 重置UI
+        function resetUI() {
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('btnText').style.display = 'inline';
+            document.getElementById('btnLoading').style.display = 'none';
+        }
+
+        // 显示错误信息
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            errorDiv.textContent = message;
+            document.querySelector('.config-section').appendChild(errorDiv);
+
+            setTimeout(function() {
+                errorDiv.remove();
+            }, 5000);
+        }
+
+        // 显示信息
+        function showInfo(message) {
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'info-message';
+            infoDiv.textContent = message;
+            document.querySelector('.config-section').appendChild(infoDiv);
+
+            setTimeout(function() {
+                infoDiv.remove();
+            }, 3000);
+        }
+
+        // 页面加载时的提示
+        window.addEventListener('load', function() {
+            showInfo('首次使用请确保已在 config.py 中配置您的 tushare API token');
+        });
+    </script>
+</body>
+</html>
