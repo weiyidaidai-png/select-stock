@@ -77,7 +77,6 @@ def background_analysis(stock_list, long_period, diff_threshold, short_period):
         analysis_status = 'error'
         analysis_result = str(e)
 
-@app.route('/')
 def convert_to_days(period, unit):
     """将周期转换为天数"""
     if unit == 'day':
@@ -88,6 +87,7 @@ def convert_to_days(period, unit):
         return period * DAYS_IN_YEAR
     return period
 
+@app.route('/')
 def index():
     """首页"""
     return render_template('index.html',
