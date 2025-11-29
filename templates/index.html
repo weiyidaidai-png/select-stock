@@ -299,16 +299,24 @@
                 <div class="form-group">
                     <label for="shortPeriod">短期均值周期</label>
                     <div style="display: flex; gap: 10px; align-items: center;">
-                        <input type="number" id="shortPeriod" value="{{ default_short_period }}" min="1" max="30" required>
+                        <input type="number" id="shortPeriod" value="{{ default_short_period }}" min="1" max="10" required>
                         <select id="shortPeriodUnit" style="padding: 10px 15px; border: 2px solid #e1e5e9; border-radius: 6px; font-size: 16px;">
-                            <option value="day" {% if default_short_period_unit == 'day' %}selected{% endif %}>日</option>
-                            <option value="month" {% if default_short_period_unit == 'month' %}selected{% endif %}>月</option>
+                            <option value="day" {% if default_short_unit == 'day' %}selected{% endif %}>日</option>
+                            <option value="month" {% if default_short_unit == 'month' %}selected{% endif %}>月</option>
+                            <option value="year" {% if default_short_unit == 'year' %}selected{% endif %}>年</option>
                         </select>
                     </div>
                 </div>
                 <div class="form-group">
-                    <label for="longPeriod">长期均值周期（天）</label>
-                    <input type="number" id="longPeriod" value="{{ default_long_period }}" min="5" max="365" required>
+                    <label for="longPeriod">长期均值周期</label>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="number" id="longPeriod" value="{{ default_long_period }}" min="1" max="15" required>
+                        <select id="longPeriodUnit" style="padding: 10px 15px; border: 2px solid #e1e5e9; border-radius: 6px; font-size: 16px;">
+                            <option value="day" {% if default_long_unit == 'day' %}selected{% endif %}>日</option>
+                            <option value="month" {% if default_long_unit == 'month' %}selected{% endif %}>月</option>
+                            <option value="year" {% if default_long_unit == 'year' %}selected{% endif %}>年</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label for="diffThreshold">差异百分比阈值（%）</label>
@@ -393,6 +401,7 @@
             const shortPeriod = document.getElementById('shortPeriod').value;
             const shortPeriodUnit = document.getElementById('shortPeriodUnit').value;
             const longPeriod = document.getElementById('longPeriod').value;
+            const longPeriodUnit = document.getElementById('longPeriodUnit').value;
             const diffThreshold = document.getElementById('diffThreshold').value;
 
             // 禁用按钮
@@ -416,7 +425,7 @@
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: `short_period=${shortPeriod}&short_period_unit=${shortPeriodUnit}&long_period=${longPeriod}&diff_threshold=${diffThreshold}`
+                body: `short_period=${shortPeriod}&short_period_unit=${shortPeriodUnit}&long_period=${longPeriod}&long_period_unit=${longPeriodUnit}&diff_threshold=${diffThreshold}`
             })
             .then(response => response.json())
             .then(data => {

@@ -3,7 +3,8 @@ import threading
 import time
 from stock_analyzer import StockAnalyzer
 from config import validate_config, DEFAULT_LONG_PERIOD, DEFAULT_DIFF_THRESHOLD, \
-    DEFAULT_SHORT_PERIOD, DEFAULT_SHORT_PERIOD_UNIT, MONTH_TO_TRADING_DAYS
+    DEFAULT_SHORT_PERIOD, DEFAULT_SHORT_PERIOD_UNIT, DEFAULT_LONG_PERIOD_UNIT, \
+    MONTH_TO_TRADING_DAYS, DAYS_IN_YEAR, MAX_LONG_YEARS
 
 app = Flask(__name__)
 
@@ -77,13 +78,24 @@ def background_analysis(stock_list, long_period, diff_threshold, short_period):
         analysis_result = str(e)
 
 @app.route('/')
+def convert_to_days(period, unit):
+    """将周期转换为天数"""
+    if unit == 'day':
+        return period
+    elif unit == 'month':
+        return period * MONTH_TO_TRADING_DAYS
+    elif unit == 'year':
+        return period * DAYS_IN_YEAR
+    return period
+
 def index():
     """首页"""
     return render_template('index.html',
                          default_long_period=DEFAULT_LONG_PERIOD,
-                         default_diff_threshold=DEFAULT_DIFF_THRESHOLD,
+                         default_long_unit=DEFAULT_LONG_PERIOD_UNIT,
                          default_short_period=DEFAULT_SHORT_PERIOD,
-                         default_short_period_unit=DEFAULT_SHORT_PERIOD_UNIT)
+                         default_short_unit=DEFAULT_SHORT_PERIOD_UNIT,
+                         default_diff_threshold=DEFAULT_DIFF_THRESHOLD)
 
 @app.route('/api/configure', methods=['POST'])
 def configure():
@@ -93,20 +105,22 @@ def configure():
     try:
         # 获取参数
         long_period = int(request.form.get('long_period', DEFAULT_LONG_PERIOD))
-        diff_threshold = float(request.form.get('diff_threshold', DEFAULT_DIFF_THRESHOLD))
+        long_period_unit = request.form.get('long_period_unit', DEFAULT_LONG_PERIOD_UNIT)
         short_period = int(request.form.get('short_period', DEFAULT_SHORT_PERIOD))
         short_period_unit = request.form.get('short_period_unit', DEFAULT_SHORT_PERIOD_UNIT)
+        diff_threshold = float(request.form.get('diff_threshold', DEFAULT_DIFF_THRESHOLD))
 
-        # 单位转换：月 -> 交易日
-        if short_period_unit == 'month':
-            short_period = short_period * MONTH_TO_TRADING_DAYS
+        # 单位转换为天数
+        long_period_days = convert_to_days(long_period, long_period_unit)
+        short_period_days = convert_to_days(short_period, short_period_unit)
 
         # 验证参数
-        if long_period < 5 or long_period > 365:
-            return jsonify({'success': False, 'message': '长期周期应在5-365天之间'})
+        max_long_days = MAX_LONG_YEARS * DAYS_IN_YEAR
+        if long_period_days < 5 or long_period_days > max_long_days:
+            return jsonify({'success': False, 'message': f'长期周期应在5天到{MAX_LONG_YEARS}年之间'})
 
-        if short_period < 1 or short_period > 90:
-            return jsonify({'success': False, 'message': '短期周期应在1-90天之间'})
+        if short_period_days < 1 or short_period_days > long_period_days:
+            return jsonify({'success': False, 'message': '短期周期应大于0且小于长期周期'})
 
         if diff_threshold < 0 or diff_threshold > 100:
             return jsonify({'success': False, 'message': '差异阈值应在0-100之间'})
@@ -127,11 +141,13 @@ def configure():
         analysis_progress = 0
 
         # 启动后台分析线程
-        thread = threading.Thread(target=background_analysis, args=(stock_list, long_period, diff_threshold, short_period))
+        thread = threading.Thread(target=background_analysis, args=(stock_list, long_period_days, diff_threshold, short_period_days))
         thread.daemon = True
         thread.start()
 
-        return jsonify({'success': True, 'total_stocks': len(stock_list), 'short_period_days': short_period})
+        return jsonify({'success': True, 'total_stocks': len(stock_list),
+                       'long_period_days': long_period_days,
+                       'short_period_days': short_period_days})
 
     except Exception as e:
         return jsonify({'success': False, 'message': f'配置失败: {str(e)}'})
