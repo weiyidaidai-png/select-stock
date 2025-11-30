@@ -14,7 +14,9 @@ class StockAnalyzer:
             days_needed = max(long_period, short_period) + 10  # 确保有足够数据计算均线
             df = self.fetcher.get_recent_data(ts_code, days_needed)
 
+            # 自动跳过时间不足的股票
             if df.empty or len(df) < max(long_period, short_period):
+                # print(f"跳过股票 {ts_code}: 数据不足 (需要 {max(long_period, short_period)} 天，实际 {len(df)} 天)")
                 return None
 
             # 计算长期均值（最近long_period天的平均值）
