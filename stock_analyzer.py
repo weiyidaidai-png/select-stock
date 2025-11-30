@@ -1,5 +1,6 @@
 import pandas as pd
 from stock_data import StockDataFetcher
+from sw_industries import get_sw_industries, is_valid_industry
 
 class StockAnalyzer:
     """股票分析器"""
@@ -42,10 +43,22 @@ class StockAnalyzer:
             print(f"分析股票{ts_code}失败: {e}")
             return None
 
-    def analyze_stocks(self, stock_list=None, long_period=20, diff_threshold=5, short_period=5):
-        """批量分析股票"""
+    def analyze_stocks(self, stock_list=None, long_period=20, diff_threshold=5, short_period=5, pre_industries=None):
+        """
+        批量分析股票，支持行业预筛选
+
+        Args:
+            stock_list: 股票列表DataFrame，若为None则自动获取
+            long_period: 长期均值周期（天）
+            diff_threshold: 差异百分比阈值
+            short_period: 短期均值周期（天）
+            pre_industries: 行业预筛选列表，或None表示不筛选
+
+        Returns:
+            pandas DataFrame，包含分析结果，增加行业字段
+        """
         if stock_list is None:
-            stock_list = self.fetcher.get_stock_list()
+            stock_list = self.fetcher.get_stock_list(pre_industries)
 
         if stock_list.empty:
             return pd.DataFrame()
@@ -58,6 +71,7 @@ class StockAnalyzer:
         for i, (_, stock) in enumerate(stock_list.iterrows()):
             ts_code = stock['ts_code']
             name = stock['name']
+            industry = stock.get('industry', '未知行业')
 
             if (i + 1) % 10 == 0:
                 print(f"已分析 {i + 1}/{total} 只股票")
@@ -66,6 +80,7 @@ class StockAnalyzer:
 
             if result:
                 result['name'] = name
+                result['industry'] = industry  # 添加行业信息
                 results.append(result)
 
         # 转换为DataFrame
@@ -80,12 +95,49 @@ class StockAnalyzer:
         # 按差异百分比绝对值从大到小排序
         df = df.sort_values('diff_percent', key=lambda x: x.abs(), ascending=False)
 
-        # 保留需要的列并排序
-        df = df[['ts_code', 'name', 'diff_percent', 'latest_close', 'long_mean', 'short_mean', 'short_period']]
+        # 保留需要的列并排序，增加行业列
+        df = df[['ts_code', 'name', 'industry', 'diff_percent', 'latest_close', 'long_mean', 'short_mean', 'short_period']]
 
         print(f"分析完成，找到 {len(df)} 只符合条件的股票")
 
         return df
+
+    def filter_results_by_industries(self, results_df, post_industries=None):
+        """
+        对分析结果进行行业后筛选
+
+        Args:
+            results_df: 分析结果DataFrame
+            post_industries: 行业后筛选列表，或None表示不筛选
+
+        Returns:
+            pandas DataFrame，筛选后的结果
+        """
+        if results_df.empty or not post_industries:
+            return results_df
+
+        # 筛选指定行业的股票
+        filtered_df = results_df[results_df['industry'].isin(post_industries)]
+
+        print(f"行业后筛选完成，找到 {len(filtered_df)} 只符合条件的股票")
+        return filtered_df
+
+    def get_available_industries(self, results_df=None):
+        """
+        获取可用的行业列表
+
+        Args:
+            results_df: 分析结果DataFrame，若为None则返回所有申万一级行业
+
+        Returns:
+            list，行业名称列表
+        """
+        if results_df is None or results_df.empty:
+            return get_sw_industries()
+
+        # 从结果中提取行业并去重排序
+        industries = sorted(results_df['industry'].dropna().unique())
+        return industries
 
     def get_stock_details(self, ts_code, days=60):
         """获取股票详细数据（用于绘制图表）"""
