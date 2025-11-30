@@ -2,6 +2,7 @@ import time
 import tushare as ts
 import pandas as pd
 from config import TUSHARE_TOKEN, API_CALL_DELAY
+from sw_industries import filter_stocks_by_industries
 
 class StockDataFetcher:
     """股票数据获取器"""
@@ -10,17 +11,32 @@ class StockDataFetcher:
         self.pro = ts.pro_api(TUSHARE_TOKEN)
         self.cache = {}  # 数据缓存，避免重复API调用
 
-    def get_stock_list(self):
-        """获取A股股票列表"""
+    def get_stock_list(self, industries=None):
+        """
+        获取A股股票列表，支持按行业筛选
+
+        Args:
+            industries: 行业名称列表，或None/空列表表示不筛选
+
+        Returns:
+            pandas DataFrame，包含股票代码、名称和行业信息
+        """
         try:
-            if 'stock_list' in self.cache:
-                return self.cache['stock_list']
+            # 构建缓存键，包含行业参数
+            cache_key = f'stock_list_{"_".join(sorted(industries))}' if industries else 'stock_list'
+
+            if cache_key in self.cache:
+                return self.cache[cache_key]
 
             time.sleep(API_CALL_DELAY)
             df = self.pro.stock_basic(exchange='', list_status='L', fields='ts_code,name,industry')
             df = df[df['ts_code'].str.startswith(('6', '0', '3'))]  # 只保留沪深股票
-            self.cache['stock_list'] = df
-            return df
+
+            # 按行业筛选
+            filtered_df = filter_stocks_by_industries(df, industries)
+
+            self.cache[cache_key] = filtered_df
+            return filtered_df
         except Exception as e:
             print(f"获取股票列表失败: {e}")
             return pd.DataFrame()

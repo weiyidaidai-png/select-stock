@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify
 import threading
 import time
 from stock_analyzer import StockAnalyzer
+from sw_industries import get_sw_industries
 from config import validate_config, DEFAULT_LONG_PERIOD, DEFAULT_DIFF_THRESHOLD, \
     DEFAULT_SHORT_PERIOD, DEFAULT_SHORT_PERIOD_UNIT, DEFAULT_LONG_PERIOD_UNIT, \
     MONTH_TO_TRADING_DAYS, DAYS_IN_YEAR, MAX_LONG_YEARS
@@ -10,9 +11,11 @@ app = Flask(__name__)
 
 # 全局变量
 analyzer = None
-analysis_result = None
+analysis_result = None  # 存储原始分析结果
+filtered_result = None  # 存储行业后筛选结果
 analysis_status = 'idle'  # idle, running, completed, error
 analysis_progress = 0
+current_pre_industries = None  # 当前使用的预筛选行业
 
 def initialize_analyzer():
     """初始化股票分析器"""
@@ -25,7 +28,7 @@ def initialize_analyzer():
 
 def background_analysis(stock_list, long_period, diff_threshold, short_period):
     """后台分析股票"""
-    global analysis_result, analysis_status, analysis_progress
+    global analysis_result, filtered_result, analysis_status, analysis_progress
 
     try:
         analysis_status = 'running'
@@ -42,6 +45,7 @@ def background_analysis(stock_list, long_period, diff_threshold, short_period):
         for i, (_, stock) in enumerate(stock_list.iterrows()):
             ts_code = stock['ts_code']
             name = stock['name']
+            industry = stock.get('industry', '未知行业')
 
             # 更新进度（确保进度平滑更新）
             current_progress = int((i + 1) / total * 100)
@@ -53,6 +57,7 @@ def background_analysis(stock_list, long_period, diff_threshold, short_period):
 
             if result:
                 result['name'] = name
+                result['industry'] = industry  # 添加行业信息
                 results.append(result)
 
         # 处理分析结果
@@ -66,16 +71,18 @@ def background_analysis(stock_list, long_period, diff_threshold, short_period):
             # 按差异百分比绝对值从大到小排序
             df = df.sort_values('diff_percent', key=lambda x: x.abs(), ascending=False)
 
-            # 保留需要的列并排序
-            df = df[['ts_code', 'name', 'diff_percent', 'latest_close', 'long_mean', 'short_mean', 'short_period']]
+            # 保留需要的列并排序，增加行业列
+            df = df[['ts_code', 'name', 'industry', 'diff_percent', 'latest_close', 'long_mean', 'short_mean', 'short_period']]
 
         analysis_result = df
+        filtered_result = df  # 初始时过滤结果与原始结果相同
         analysis_status = 'completed'
 
     except Exception as e:
         print(f"分析失败: {e}")
         analysis_status = 'error'
         analysis_result = str(e)
+        filtered_result = None
 
 def convert_to_days(period, unit):
     """将周期转换为天数"""
@@ -90,17 +97,21 @@ def convert_to_days(period, unit):
 @app.route('/')
 def index():
     """首页"""
+    # 获取申万一级行业列表
+    sw_industries = get_sw_industries()
+
     return render_template('index.html',
                          default_long_period=DEFAULT_LONG_PERIOD,
                          default_long_unit=DEFAULT_LONG_PERIOD_UNIT,
                          default_short_period=DEFAULT_SHORT_PERIOD,
                          default_short_unit=DEFAULT_SHORT_PERIOD_UNIT,
-                         default_diff_threshold=DEFAULT_DIFF_THRESHOLD)
+                         default_diff_threshold=DEFAULT_DIFF_THRESHOLD,
+                         sw_industries=sw_industries)
 
 @app.route('/api/configure', methods=['POST'])
 def configure():
     """配置分析参数并开始分析"""
-    global analysis_result, analysis_status, analysis_progress
+    global analysis_result, filtered_result, analysis_status, analysis_progress, current_pre_industries
 
     try:
         # 获取参数
@@ -109,6 +120,11 @@ def configure():
         short_period = int(request.form.get('short_period', DEFAULT_SHORT_PERIOD))
         short_period_unit = request.form.get('short_period_unit', DEFAULT_SHORT_PERIOD_UNIT)
         diff_threshold = float(request.form.get('diff_threshold', DEFAULT_DIFF_THRESHOLD))
+
+        # 获取行业预筛选参数
+        pre_industries = request.form.getlist('pre_industries[]')
+        # 处理空列表情况
+        pre_industries = pre_industries if pre_industries and pre_industries != [''] else None
 
         # 单位转换为天数
         long_period_days = convert_to_days(long_period, long_period_unit)
@@ -130,15 +146,17 @@ def configure():
             if not initialize_analyzer():
                 return jsonify({'success': False, 'message': '无法初始化股票分析器，请检查tushare API token配置'})
 
-        # 获取股票列表
-        stock_list = analyzer.fetcher.get_stock_list()
+        # 获取股票列表，支持行业预筛选
+        stock_list = analyzer.fetcher.get_stock_list(pre_industries)
         if stock_list.empty:
-            return jsonify({'success': False, 'message': '无法获取股票列表'})
+            return jsonify({'success': False, 'message': '无法获取股票列表或所选行业无股票数据'})
 
         # 重置状态
         analysis_result = None
+        filtered_result = None
         analysis_status = 'running'
         analysis_progress = 0
+        current_pre_industries = pre_industries
 
         # 启动后台分析线程
         thread = threading.Thread(target=background_analysis, args=(stock_list, long_period_days, diff_threshold, short_period_days))
@@ -147,7 +165,8 @@ def configure():
 
         return jsonify({'success': True, 'total_stocks': len(stock_list),
                        'long_period_days': long_period_days,
-                       'short_period_days': short_period_days})
+                       'short_period_days': short_period_days,
+                       'pre_industries': pre_industries or []})
 
     except Exception as e:
         return jsonify({'success': False, 'message': f'配置失败: {str(e)}'})
@@ -165,23 +184,23 @@ def get_status():
 @app.route('/api/results')
 def get_results():
     """获取分析结果"""
-    global analysis_result, analysis_status
+    global filtered_result, analysis_status
 
     if analysis_status != 'completed':
         return jsonify({'success': False, 'message': '分析尚未完成'})
 
-    if analysis_result is None or analysis_result.empty:
+    if filtered_result is None or filtered_result.empty:
         return jsonify({'success': False, 'message': '没有找到符合条件的股票'})
 
     # 计算统计信息
-    total_count = len(analysis_result)
-    up_count = len(analysis_result[analysis_result['diff_percent'] > 0])
-    down_count = len(analysis_result[analysis_result['diff_percent'] < 0])
-    avg_diff = analysis_result['diff_percent'].mean()
+    total_count = len(filtered_result)
+    up_count = len(filtered_result[filtered_result['diff_percent'] > 0])
+    down_count = len(filtered_result[filtered_result['diff_percent'] < 0])
+    avg_diff = filtered_result['diff_percent'].mean()
 
     # 转换为JSON格式
     results = {
-        'stocks': analysis_result.to_dict('records'),
+        'stocks': filtered_result.to_dict('records'),
         'count': total_count,
         'statistics': {
             'total': total_count,
@@ -192,6 +211,69 @@ def get_results():
     }
 
     return jsonify({'success': True, 'data': results})
+
+@app.route('/api/filter_by_industries', methods=['POST'])
+def filter_by_industries():
+    """按行业后筛选分析结果"""
+    global analysis_result, filtered_result, analysis_status
+
+    if analysis_status != 'completed':
+        return jsonify({'success': False, 'message': '分析尚未完成'})
+
+    if analysis_result is None or analysis_result.empty:
+        return jsonify({'success': False, 'message': '没有可筛选的股票数据'})
+
+    try:
+        # 获取后筛选行业参数
+        post_industries = request.json.get('post_industries', [])
+        post_industries = post_industries if post_industries else None
+
+        # 进行行业后筛选
+        filtered_result = analyzer.filter_results_by_industries(analysis_result, post_industries)
+
+        # 返回筛选结果
+        if filtered_result.empty:
+            return jsonify({'success': True, 'message': '没有找到符合行业条件的股票'})
+
+        # 计算统计信息
+        total_count = len(filtered_result)
+        up_count = len(filtered_result[filtered_result['diff_percent'] > 0])
+        down_count = len(filtered_result[filtered_result['diff_percent'] < 0])
+        avg_diff = filtered_result['diff_percent'].mean()
+
+        results = {
+            'stocks': filtered_result.to_dict('records'),
+            'count': total_count,
+            'statistics': {
+                'total': total_count,
+                'up': up_count,
+                'down': down_count,
+                'avg_diff': float(avg_diff)
+            }
+        }
+
+        return jsonify({'success': True, 'data': results})
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'行业筛选失败: {str(e)}'})
+
+@app.route('/api/available_industries')
+def get_available_industries():
+    """获取可用的行业列表"""
+    global analysis_result
+
+    try:
+        if analysis_result is None or analysis_result.empty:
+            # 如果没有分析结果，返回所有申万一级行业
+            industries = get_sw_industries()
+        else:
+            # 从分析结果中提取可用行业
+            industries = sorted(analysis_result['industry'].dropna().unique())
+
+        return jsonify({'success': True, 'data': industries})
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'获取行业列表失败: {str(e)}'})
 
 @app.route('/api/stock_details/<ts_code>')
 def get_stock_details(ts_code):
@@ -233,11 +315,13 @@ def get_stock_list():
 @app.route('/api/reset')
 def reset_analysis():
     """重置分析状态"""
-    global analysis_result, analysis_status, analysis_progress
+    global analysis_result, filtered_result, analysis_status, analysis_progress, current_pre_industries
 
     analysis_result = None
+    filtered_result = None
     analysis_status = 'idle'
     analysis_progress = 0
+    current_pre_industries = None
 
     return jsonify({'success': True, 'message': '分析状态已重置'})
 
