@@ -407,6 +407,7 @@
                 </button>
             </form>
 
+<!-- 指数预筛选部分 -->            <div class="filter-section">                <h3>📊 指数预筛选</h3>                <div class="index-selector">                    {% for index_name in available_indexes %}                    <div class="index-item">                        <input type="checkbox" name="pre_indexes" value="{{ index_name }}" id="index_{{ loop.index }}">                        <label for="index_{{ loop.index }}">{{ index_name }}</label>                    </div>                    {% endfor %}                </div>            </div>
             <!-- 行业预筛选部分 -->
             <div class="industry-filter-section">
                 <div class="industry-filter-header">
@@ -529,6 +530,7 @@
             const diffThreshold = document.getElementById('diffThreshold').value;
 
             // 获取选中的预筛选行业
+// 获取选中的预筛选指数            const selectedPreIndexes = Array.from(document.querySelectorAll('input[name="pre_indexes"]:checked'))                .map(checkbox => checkbox.value);
             const selectedPreIndustries = Array.from(document.querySelectorAll('input[name="pre_industries"]:checked'))
                 .map(checkbox => checkbox.value);
 

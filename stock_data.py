@@ -3,6 +3,7 @@ import tushare as ts
 import pandas as pd
 from config import TUSHARE_TOKEN, API_CALL_DELAY
 from sw_industries import filter_stocks_by_industries
+from index_filter import filter_stocks_by_index_names
 
 class StockDataFetcher:
     """股票数据获取器"""
@@ -11,19 +12,22 @@ class StockDataFetcher:
         self.pro = ts.pro_api(TUSHARE_TOKEN)
         self.cache = {}  # 数据缓存，避免重复API调用
 
-    def get_stock_list(self, industries=None):
+    def get_stock_list(self, industries=None, indexes=None):
         """
-        获取A股股票列表，支持按行业筛选
+        获取A股股票列表，支持按行业和指数筛选
 
         Args:
             industries: 行业名称列表，或None/空列表表示不筛选
+            indexes: 指数名称列表，或None/空列表表示不筛选
 
         Returns:
             pandas DataFrame，包含股票代码、名称和行业信息
         """
         try:
-            # 构建缓存键，包含行业参数
-            cache_key = f'stock_list_{"_".join(sorted(industries))}' if industries else 'stock_list'
+            # 构建缓存键，包含行业和指数参数
+            industry_key = "_".join(sorted(industries)) if industries else ""
+            index_key = "_".join(sorted(indexes)) if indexes else ""
+            cache_key = f'stock_list_{industry_key}_{index_key}'.strip('_')
 
             if cache_key in self.cache:
                 return self.cache[cache_key]
@@ -34,6 +38,9 @@ class StockDataFetcher:
 
             # 按行业筛选
             filtered_df = filter_stocks_by_industries(df, industries)
+            
+            # 按指数筛选（AND逻辑）
+            filtered_df = filter_stocks_by_index_names(self, filtered_df, indexes)
 
             self.cache[cache_key] = filtered_df
             return filtered_df
