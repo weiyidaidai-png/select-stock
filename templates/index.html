@@ -407,7 +407,36 @@
                 </button>
             </form>
 
-<!-- 指数预筛选部分 -->            <div class="filter-section">                <h3>📊 指数预筛选</h3>                <div class="index-selector">                    {% for index_name in available_indexes %}                    <div class="index-item">                        <input type="checkbox" name="pre_indexes" value="{{ index_name }}" id="index_{{ loop.index }}">                        <label for="index_{{ loop.index }}">{{ index_name }}</label>                    </div>                    {% endfor %}                </div>            </div>
+        <!-- 指数预筛选部分 -->
+        <div class="filter-section" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e9ecef;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h3>📊 指数预筛选</h3>
+                <div>
+                    <button type="button" class="btn btn-secondary" id="selectAllPreIndexes" style="padding: 6px 15px; font-size: 14px;">全选</button>
+                    <button type="button" class="btn btn-secondary" id="clearAllPreIndexes" style="padding: 6px 15px; font-size: 14px;">清空</button>
+                </div>
+            </div>
+
+            <div class="selected-indexes" id="preSelectedIndexes" style="display: none; margin-bottom: 15px; padding: 10px; background: #e7f3ff; border-radius: 6px; border: 1px solid #b3d9ff;">
+                <strong>已选择指数：</strong><span id="preSelectedIndexCount">0</span>个
+            </div>
+
+            <div class="index-selector" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; padding: 15px; background: #f8f9fa; border-radius: 6px;">
+                <!-- 添加全选选项 -->
+                <div class="index-item" style="display: flex; align-items: center; gap: 8px; padding: 5px; border-radius: 4px; transition: background-color 0.2s; border: 1px solid #667eea;">
+                    <input type="checkbox" name="pre_indexes" value="全选" id="index_all" style="width: 16px; height: 16px;">
+                    <label for="index_all" style="cursor: pointer; font-weight: 600; color: #667eea;">全选</label>
+                </div>
+
+                <!-- 其他指数选项 -->
+                {% for index_name in available_indexes %}
+                <div class="index-item" style="display: flex; align-items: center; gap: 8px; padding: 5px; border-radius: 4px; transition: background-color 0.2s;">
+                    <input type="checkbox" name="pre_indexes" value="{{ index_name }}" id="index_{{ loop.index }}" style="width: 16px; height: 16px;">
+                    <label for="index_{{ loop.index }}" style="cursor: pointer;">{{ index_name }}</label>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
             <!-- 行业预筛选部分 -->
             <div class="industry-filter-section">
                 <div class="industry-filter-header">
@@ -529,8 +558,11 @@
             const longPeriodUnit = document.getElementById('longPeriodUnit').value;
             const diffThreshold = document.getElementById('diffThreshold').value;
 
+            // 获取选中的预筛选指数
+            const selectedPreIndexes = Array.from(document.querySelectorAll('input[name="pre_indexes"]:checked'))
+                .map(checkbox => checkbox.value);
+
             // 获取选中的预筛选行业
-// 获取选中的预筛选指数            const selectedPreIndexes = Array.from(document.querySelectorAll('input[name="pre_indexes"]:checked'))                .map(checkbox => checkbox.value);
             const selectedPreIndustries = Array.from(document.querySelectorAll('input[name="pre_industries"]:checked'))
                 .map(checkbox => checkbox.value);
 
@@ -562,6 +594,11 @@
                 formData.append('pre_industries[]', industry);
             });
 
+            // 添加选中的指数
+            selectedPreIndexes.forEach(index => {
+                formData.append('pre_indexes[]', index);
+            });
+
             // 发送配置请求
             fetch('/api/configure', {
                 method: 'POST',
@@ -570,10 +607,29 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    const industryInfo = selectedPreIndustries.length > 0
-                        ? `（行业预筛选：${selectedPreIndustries.join('、')}）`
-                        : '';
-                    document.getElementById('statusText').textContent = `开始分析 ${data.total_stocks} 只股票${industryInfo}...`;
+                    // 构建预筛选信息
+                    let prefilterInfo = '';
+                    if (selectedPreIndustries.length > 0 || selectedPreIndexes.length > 0) {
+                        prefilterInfo = '（预筛选：';
+                        if (selectedPreIndustries.length > 0) {
+                            prefilterInfo += `行业${selectedPreIndustries.join('、')}`;
+                        }
+                        if (selectedPreIndustries.length > 0 && selectedPreIndexes.length > 0) {
+                            prefilterInfo += '，';
+                        }
+                        if (selectedPreIndexes.length > 0) {
+                            prefilterInfo += `指数${selectedPreIndexes.join('、')}`;
+                        }
+                        prefilterInfo += '）';
+                    }
+
+                    // 显示预筛选统计信息
+                    const totalStocks = data.total_stocks;
+                    const prefilteredStocks = data.prefiltered_stocks;
+                    document.getElementById('statusText').textContent =
+                        `股票池总数：${totalStocks} 只 | ` +
+                        `预筛选后：${prefilteredStocks} 只 | ` +
+                        `开始分析...${prefilterInfo}`;
                     // 开始轮询状态
                     startStatusPolling();
                 } else {
@@ -996,6 +1052,65 @@
             document.getElementById('btnLoading').style.display = 'none';
         }
 
+        // 初始化预筛选指数事件
+        function initializePreIndexEvents() {
+            // 预筛选指数选择事件
+            document.querySelectorAll('input[name="pre_indexes"]').forEach(checkbox => {
+                checkbox.addEventListener('change', function() {
+                    handleIndexSelectionChange(this);
+                });
+            });
+
+            // 全选预筛选指数按钮（顶部按钮）
+            document.getElementById('selectAllPreIndexes').addEventListener('click', function() {
+                // 选中所有指数选项，但不包括"全选"选项本身
+                document.querySelectorAll('input[name="pre_indexes"]:not(#index_all)').forEach(checkbox => {
+                    checkbox.checked = true;
+                });
+                document.getElementById('index_all').checked = false; // 确保"全选"选项未被选中
+                updatePreSelectedIndexCount();
+            });
+
+            // 清空预筛选指数按钮（顶部按钮）
+            document.getElementById('clearAllPreIndexes').addEventListener('click', function() {
+                document.querySelectorAll('input[name="pre_indexes"]').forEach(checkbox => {
+                    checkbox.checked = false;
+                });
+                updatePreSelectedIndexCount();
+            });
+        }
+
+        // 处理指数选择变化
+        function handleIndexSelectionChange(checkbox) {
+            const isAllSelect = checkbox.value === '全选';
+            const isChecked = checkbox.checked;
+
+            if (isAllSelect && isChecked) {
+                // 如果用户勾选了"全选"选项，取消所有其他指数的选择
+                document.querySelectorAll('input[name="pre_indexes"]:not(#index_all)').forEach(input => {
+                    input.checked = false;
+                });
+            } else if (!isAllSelect && isChecked) {
+                // 如果用户勾选了其他指数选项，取消"全选"选项的选择
+                document.getElementById('index_all').checked = false;
+            }
+
+            // 更新选择数量显示
+            updatePreSelectedIndexCount();
+        }
+
+        // 更新预筛选指数已选择数量
+        function updatePreSelectedIndexCount() {
+            const selectedCount = document.querySelectorAll('input[name="pre_indexes"]:checked').length;
+            document.getElementById('preSelectedIndexCount').textContent = selectedCount;
+
+            if (selectedCount > 0) {
+                document.getElementById('preSelectedIndexes').style.display = 'block';
+            } else {
+                document.getElementById('preSelectedIndexes').style.display = 'none';
+            }
+        }
+
         // 初始化预筛选行业事件
         function initializePreFilterEvents() {
             // 预筛选行业选择事件
@@ -1046,6 +1161,9 @@
 
         // 页面加载时的提示
         window.addEventListener('load', function() {
+            // 初始化预筛选指数事件
+            initializePreIndexEvents();
+
             // 初始化预筛选行业事件
             initializePreFilterEvents();
 
