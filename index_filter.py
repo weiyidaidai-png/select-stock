@@ -43,20 +43,55 @@ def get_index_constituents(fetcher, index_codes):
 
     for index_code in index_codes:
         try:
-            # 获取指数成分股
-            df = fetcher.pro.index_weight(index_code=index_code, trade_date='')
-            if not df.empty:
-                # 添加指数名称列
-                df['index_code'] = index_code
-                constituents_list.append(df)
+            # 获取指数成分股 - 先尝试不指定日期获取最新数据
+            try:
+                # 方法1: 尝试使用index_weight获取指数成分股
+                df = fetcher.pro.index_weight(index_code=index_code, trade_date='')
+                if not df.empty:
+                    # 添加指数名称列
+                    df['index_code'] = index_code
+                    constituents_list.append(df)
+                    continue
+            except Exception as e1:
+                print(f"尝试方法1获取指数{index_code}成分股失败: {e1}")
+
+            # 方法2: 尝试使用index_member获取指数成分股
+            try:
+                df = fetcher.pro.index_member(index_code=index_code)
+                if not df.empty:
+                    df['index_code'] = index_code
+                    # 重命名列以保持一致性
+                    if 'con_code' in df.columns:
+                        df = df.rename(columns={'con_code': 'ts_code'})
+                    elif 'ts_code' in df.columns:
+                        pass
+                    elif 'code' in df.columns:
+                        df = df.rename(columns={'code': 'ts_code'})
+
+                    if 'ts_code' in df.columns:
+                        constituents_list.append(df)
+                        continue
+            except Exception as e2:
+                print(f"尝试方法2获取指数{index_code}成分股失败: {e2}")
+
+            # 方法3: 尝试使用其他API获取指数成分股
+            print(f"无法获取指数{index_code}成分股，将跳过该指数")
+
         except Exception as e:
-            print(f"获取指数{index_code}成分股失败: {e}")
+            print(f"获取指数{index_code}成分股时发生异常: {e}")
 
     if constituents_list:
         # 合并所有指数成分股
         combined_df = pd.concat(constituents_list, ignore_index=True)
-        # 只保留股票代码和指数代码列
-        return combined_df[['con_code', 'index_code']].rename(columns={'con_code': 'ts_code'})
+
+        # 确保ts_code列存在且格式正确
+        if 'ts_code' not in combined_df.columns and 'con_code' in combined_df.columns:
+            combined_df = combined_df.rename(columns={'con_code': 'ts_code'})
+
+        if 'ts_code' in combined_df.columns:
+            # 只保留股票代码和指数代码列
+            result_df = combined_df[['ts_code', 'index_code']] if 'index_code' in combined_df.columns else combined_df[['ts_code']]
+            return result_df
 
     return pd.DataFrame()
 
@@ -95,7 +130,13 @@ def filter_stocks_by_index_names(fetcher, stock_list, index_names):
     if not index_names:
         return stock_list
 
-    # 验证指数名称有效性
+    # 检查是否包含"全选"选项
+    if "全选" in index_names:
+        # 如果选择了"全选"，则返回所有股票，不进行指数筛选
+        print("用户选择了全选指数，返回所有股票")
+        return stock_list
+
+    # 验证指数名称有效性（排除"全选"选项后）
     valid_index_names = [name for name in index_names if is_valid_index(name)]
     if not valid_index_names:
         print("没有有效的指数名称，跳过指数筛选")

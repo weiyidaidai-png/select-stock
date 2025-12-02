@@ -97,8 +97,13 @@ def convert_to_days(period, unit):
 @app.route('/')
 def index():
     """首页"""
+    from index_filter import get_available_indexes
+
     # 获取申万一级行业列表
     sw_industries = get_sw_industries()
+
+    # 获取可用的指数列表
+    available_indexes = get_available_indexes()
 
     return render_template('index.html',
                          default_long_period=DEFAULT_LONG_PERIOD,
@@ -106,7 +111,8 @@ def index():
                          default_short_period=DEFAULT_SHORT_PERIOD,
                          default_short_unit=DEFAULT_SHORT_PERIOD_UNIT,
                          default_diff_threshold=DEFAULT_DIFF_THRESHOLD,
-                         sw_industries=sw_industries)
+                         sw_industries=sw_industries,
+                         available_indexes=available_indexes)
 
 @app.route('/api/configure', methods=['POST'])
 def configure():
@@ -125,6 +131,11 @@ def configure():
         pre_industries = request.form.getlist('pre_industries[]')
         # 处理空列表情况
         pre_industries = pre_industries if pre_industries and pre_industries != [''] else None
+
+        # 获取指数预筛选参数
+        pre_indexes = request.form.getlist('pre_indexes[]')
+        # 处理空列表情况
+        pre_indexes = pre_indexes if pre_indexes and pre_indexes != [''] else None
 
         # 单位转换为天数
         long_period_days = convert_to_days(long_period, long_period_unit)
@@ -146,10 +157,17 @@ def configure():
             if not initialize_analyzer():
                 return jsonify({'success': False, 'message': '无法初始化股票分析器，请检查tushare API token配置'})
 
-        # 获取股票列表，支持行业预筛选
-        stock_list = analyzer.fetcher.get_stock_list(pre_industries)
+        # 获取股票列表，支持行业和指数预筛选
+        # 先获取完整股票列表
+        full_stock_list = analyzer.fetcher.get_stock_list()
+        total_stocks = len(full_stock_list)
+
+        # 应用行业和指数预筛选
+        stock_list = analyzer.fetcher.get_stock_list(pre_industries, pre_indexes)
+        prefiltered_stocks = len(stock_list)
+
         if stock_list.empty:
-            return jsonify({'success': False, 'message': '无法获取股票列表或所选行业无股票数据'})
+            return jsonify({'success': False, 'message': '无法获取股票列表或所选行业/指数无股票数据'})
 
         # 重置状态
         analysis_result = None
@@ -163,10 +181,13 @@ def configure():
         thread.daemon = True
         thread.start()
 
-        return jsonify({'success': True, 'total_stocks': len(stock_list),
+        return jsonify({'success': True,
+                       'total_stocks': total_stocks,  # 总股票数
+                       'prefiltered_stocks': prefiltered_stocks,  # 预筛选后的股票数
                        'long_period_days': long_period_days,
                        'short_period_days': short_period_days,
-                       'pre_industries': pre_industries or []})
+                       'pre_industries': pre_industries or [],
+                       'pre_indexes': pre_indexes or []})
 
     except Exception as e:
         return jsonify({'success': False, 'message': f'配置失败: {str(e)}'})
